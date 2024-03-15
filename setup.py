@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
   name="nextflowspawner",
-  version='0.1.0',
+  version='0.2.0',
   url="https://github.com/phue/nextflowspawner",
   description="Spawn Nextflow pipelines from Jupyterhub and configure them interactively",  
   author="Patrick Hüther",

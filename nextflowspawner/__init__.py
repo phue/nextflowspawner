@@ -26,6 +26,17 @@ class NextflowSpawner(LocalProcessSpawner):
                 params[param.get('title')] = self._get_params_from_schema({'defs': {param.get('title'): param}}, key)
         return params
 
+    def _convert_schema_type(self, type, param=None):
+        match type:
+            case 'boolean':
+                return bool(param) if param is not None else 'radio'
+            case 'integer':
+                return int(param) if param is not None else 'number'
+            case 'number':
+                return float(param) if param is not None else 'number'
+            case _:
+                return str(param) if param is not None else 'text'
+
     def _construct_form_field(self, id, param):
         form_types = {'boolean': 'radio', 'string': 'text', 'integer': 'number', 'number': 'number'}
         html = []
@@ -40,7 +51,7 @@ class NextflowSpawner(LocalProcessSpawner):
                     html += "<option value='{opt}'>{opt}</option>".format(id=id, opt=opt)
                 html += "</select>"
             case {'type': type, 'default': default}: # render others as input fields
-                html += "<input name='{id}' class='form-control' placeholder='{default}' type='{type}'></input>".format(id=id, default=default, type=form_types.get(type))
+                html += "<input name='{id}' class='form-control' placeholder='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(default, type))
             case _: # recurse nested parameters
                 html += [ self._construct_form_field(p, v) for p, v in param.items() ]
         html += "</div>"
@@ -68,9 +79,11 @@ class NextflowSpawner(LocalProcessSpawner):
         return html
 
     def options_from_form(self, formdata):
+        # get types and defaults from schema
+        types, defaults = self._get_params_from_schema(self.schema, 'type'), self._get_params_from_schema(self.schema, 'default')
 
-        # get default parameters, then update with user-defined parameters from form
-        options = self._get_params_from_schema(self.schema, 'default') | { k: v.pop() for k, v in formdata.items() }
+        # update defaults with user-defined parameters from form
+        options = defaults | { k: self._convert_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
 
         # validate against schema
         jsonschema.validate(options, schema = self.schema)
