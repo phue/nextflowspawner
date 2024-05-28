@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
   name="nextflowspawner",
-  version='0.2.0',
+  version='0.2.1',
   url="https://github.com/phue/nextflowspawner",
   description="Spawn Nextflow pipelines from Jupyterhub and configure them interactively",  
   author="Patrick Hüther",
@@ -14,5 +14,5 @@ setuptools.setup(
     ],
   },
   python_requires=">=3.10",
-  install_requires=['jsonschema', 'jupyterhub==4.0.2', 'jupyter-nextflow-proxy@git+https://github.com/phue/jupyter-nextflow-proxy@v0.1.0'],
+  install_requires=['jsonschema', 'jupyterhub>=4.0.2', 'jupyter-nextflow-proxy@git+https://github.com/phue/jupyter-nextflow-proxy@v0.1.0'],
 )
