@@ -38,7 +38,6 @@ class NextflowSpawner(LocalProcessSpawner):
                 return str(param) if param is not None else 'text'
 
     def _construct_form_field(self, id, param):
-        form_types = {'boolean': 'radio', 'string': 'text', 'integer': 'number', 'number': 'number'}
         html = []
         html += "<div class='form-group'>"
         html += "<label for='{id}'>{desc}</label>".format(id=id, desc=param.get('description')) if param.get('description') else []
@@ -51,7 +50,7 @@ class NextflowSpawner(LocalProcessSpawner):
                     html += "<option value='{opt}'>{opt}</option>".format(id=id, opt=opt)
                 html += "</select>"
             case {'type': type, 'default': default}: # render others as input fields
-                html += "<input name='{id}' class='form-control' placeholder='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(default, type))
+                html += "<input name='{id}' class='form-control' value='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(default, type))
             case _: # recurse nested parameters
                 html += [ self._construct_form_field(p, v) for p, v in param.items() ]
         html += "</div>"
@@ -89,7 +88,6 @@ class NextflowSpawner(LocalProcessSpawner):
         jsonschema.validate(options, schema = self.schema)
 
         return options
-
 
     def get_env(self):
         env = super().get_env()
