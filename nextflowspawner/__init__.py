@@ -1,6 +1,8 @@
+import glob
 import hashlib
 import json
 import jsonschema
+import os
 
 from jupyterhub.spawner import LocalProcessSpawner
 
@@ -29,7 +31,7 @@ class NextflowSpawner(LocalProcessSpawner):
     def _convert_schema_type(self, type, param=None):
         match type:
             case 'boolean':
-                return bool(param) if param is not None else 'radio'
+                return bool(param) if param is not None else 'checkbox'
             case 'integer':
                 return int(param) if param is not None else 'number'
             case 'number':
@@ -50,7 +52,7 @@ class NextflowSpawner(LocalProcessSpawner):
                     html += "<option value='{opt}'>{opt}</option>".format(id=id, opt=opt)
                 html += "</select>"
             case {'type': type, 'default': default}: # render others as input fields
-                html += "<input name='{id}' class='form-control' value='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(default, type))
+                html += "<input name='{id}' class='form-control' value='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(type))
             case _: # recurse nested parameters
                 html += [ self._construct_form_field(p, v) for p, v in param.items() ]
         html += "</div>"
@@ -58,7 +60,6 @@ class NextflowSpawner(LocalProcessSpawner):
         return "".join(html)
 
     def _write_params_file(self, config):
-
         # dump parameters to json
         json_string = json.dumps(config)
 
@@ -81,11 +82,24 @@ class NextflowSpawner(LocalProcessSpawner):
         # get types and defaults from schema
         types, defaults = self._get_params_from_schema(self.schema, 'type'), self._get_params_from_schema(self.schema, 'default')
 
+        # get user-defined parameters from form and cast types
+        params = { k: self._convert_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
+
+        # check if provided paths actually exist
+        for k, v in self._get_params_from_schema(self.schema, 'format').items():
+            if k in params.keys() and v == 'path':
+                if not (g := glob.glob(params.get(k))):
+                    raise FileNotFoundError(f"{params.get(k)} does not exist")
+                else:
+                    for p in g:
+                        if not os.access(p, os.R_OK):
+                            raise PermissionError(f"{p} is not readable")
+
         # update defaults with user-defined parameters from form
-        options = defaults | { k: self._convert_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
+        options = defaults | params
 
         # validate against schema
-        jsonschema.validate(options, schema = self.schema)
+        jsonschema.validate(options, schema=self.schema)
 
         return options
 
