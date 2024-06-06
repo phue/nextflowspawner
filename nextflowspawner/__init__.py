@@ -3,20 +3,39 @@ import hashlib
 import json
 import jsonschema
 import os
+import pwd
 
 from jupyterhub.spawner import LocalProcessSpawner
+from subprocess import Popen, run, CalledProcessError
+from traitlets import default, Dict, Unicode
+from urllib.parse import urlparse
 
 class NextflowSpawner(LocalProcessSpawner):
-    
-    def make_preexec_fn(self, name):
-        pass
-
-    default_url = '/nextflow' # entrypoint for https://github.com/phue/jupyter-nextflow-proxy
 
     @property
-    def schema(self, schema_path='nextflow_schema.json'):
-        with open(schema_path) as j:
-            return json.load(j)   
+    def nxf_home(self):
+        return os.getenv('NXF_HOME', f"{pwd.getpwnam(self.user.name).pw_dir}/.nextflow")
+
+    default_url = Unicode('/nextflow', help="entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
+    workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
+    
+    schema = Dict(config=True, help="The pipeline JSON schema.")
+
+    @default('schema')
+    def _default_schema(self):
+        path = f"{self.nxf_home}/assets/{urlparse(self.workflow_url).path[1:]}/nextflow_schema.json"
+    
+        try:
+            run(['nextflow', 'pull', self.workflow_url], check=True)
+            with open(path) as nxf_schema:
+                return json.load(nxf_schema)
+        except CalledProcessError:
+            print(f"{self.workflow_url} does not seem to exist")
+        except FileNotFoundError:
+            print(f"{self.workflow_url} does not seem to provide a nextflow_schema.json")
+
+    def make_preexec_fn(self, _):
+        pass
 
     def _get_params_from_schema(self, schema, key=None):
         params = {}
@@ -89,14 +108,18 @@ class NextflowSpawner(LocalProcessSpawner):
         for k, v in self._get_params_from_schema(self.schema, 'format').items():
             if k in params.keys() and v == 'path':
                 if not (g := glob.glob(params.get(k))):
-                    raise FileNotFoundError(f"{params.get(k)} does not exist")
+                    raise FileNotFoundError(f"{params.get(k)} does not exist.")
                 else:
                     for p in g:
                         if not os.access(p, os.R_OK):
-                            raise PermissionError(f"{p} is not readable")
+                            raise PermissionError(f"{p} is not readable.")
 
         # update defaults with user-defined parameters from form
         options = defaults | params
+
+        # add email address for notifications (if provided via config)
+        if 'NXF_USER_EMAIL' in self.environment:
+            options['EMAIL'] = self.environment['NXF_USER_EMAIL']
 
         # validate against schema
         jsonschema.validate(options, schema=self.schema)
@@ -105,5 +128,7 @@ class NextflowSpawner(LocalProcessSpawner):
 
     def get_env(self):
         env = super().get_env()
-        env['NXF_PARAMS_FILE'] = self._write_params_file(self.user_options)
+        env['NXF_HOME'] = self.nxf_home
+        env['NXF_USER_WORKFLOW'] = self.workflow_url
+        env['NXF_USER_PARAMS'] = self._write_params_file(self.user_options)
         return env
