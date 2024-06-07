@@ -6,7 +6,7 @@ import os
 import pwd
 
 from jupyterhub.spawner import LocalProcessSpawner
-from subprocess import Popen, run, CalledProcessError
+from subprocess import run, CalledProcessError
 from traitlets import default, Dict, Unicode
 from urllib.parse import urlparse
 
