@@ -34,8 +34,13 @@ class NextflowSpawner(LocalProcessSpawner):
         except FileNotFoundError:
             print(f"{self.workflow_url} does not seem to provide a nextflow_schema.json")
 
-    def make_preexec_fn(self, _):
-        pass
+    def make_preexec_fn(self, name):
+        if os.getuid():
+            # if we are already running as non-root user, do nothing
+            pass
+        else:
+            # otherwise drop privileges
+            return super().set_user_setuid(name, chdir=True)
 
     def _get_params_from_schema(self, schema, key=None):
         params = {}
