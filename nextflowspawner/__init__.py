@@ -14,7 +14,10 @@ class NextflowSpawner(LocalProcessSpawner):
 
     @property
     def nxf_home(self):
-        return os.getenv('NXF_HOME', f"{pwd.getpwnam(self.user.name).pw_dir}/.nextflow")
+        print(self.user.name)
+        user_home = pwd.getpwnam(self.user.name).pw_dir
+        print(user_home)
+        return os.getenv('NXF_HOME', f"{user_home}/.nextflow")
 
     default_url = Unicode('/nextflow', help="entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
     workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
@@ -34,13 +37,13 @@ class NextflowSpawner(LocalProcessSpawner):
         except FileNotFoundError:
             print(f"{self.workflow_url} does not seem to provide a nextflow_schema.json")
 
-    def make_preexec_fn(self, name):
-        if os.getuid():
-            # if we are already running as non-root user, do nothing
-            pass
-        else:
-            # otherwise drop privileges
-            return super().set_user_setuid(name, chdir=True)
+#    def make_preexec_fn(self, name):
+#        if os.getuid():
+#            # if we are already running as non-root user, do nothing
+#            pass
+#        else:
+#            # otherwise drop privileges
+#            return super().set_user_setuid(name, chdir=True)
 
     def _get_params_from_schema(self, schema, key=None):
         params = {}
