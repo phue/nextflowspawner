@@ -5,23 +5,44 @@ import jsonschema
 import os
 import pwd
 
-from jupyterhub.spawner import LocalProcessSpawner
+from jupyterhub.spawner import LocalProcessSpawner, set_user_setuid
 from subprocess import run, CalledProcessError
 from traitlets import default, Dict, Unicode
 from urllib.parse import urlparse
 
 class NextflowSpawner(LocalProcessSpawner):
 
-    @property
-    def nxf_home(self):
-        print(self.user.name)
-        user_home = pwd.getpwnam(self.user.name).pw_dir
-        print(user_home)
-        return os.getenv('NXF_HOME', f"{user_home}/.nextflow")
-
     default_url = Unicode('/nextflow', help="entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
     workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
-    
+
+    home_dir = Unicode(help="The user home directory")
+
+    @default('home_dir')
+    def _default_home_dir(self):
+        return pwd.getpwnam(self.user.name).pw_dir
+
+    nxf_home = Unicode(help="The directory where nextflow assets are stored.")
+
+    @default('nxf_home')
+    def _default_nxf_home(self):
+        return os.getenv('NXF_HOME', f"{self.home_dir}/.nextflow")
+
+    nxf_launch = Unicode(help="The directory where the pipeline is launched.")
+
+    @default('nxf_launch')
+    def _default_nxf_launch(self):
+        path = f"{self.home_dir}/{self.workflow_url.split('/').pop()}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+            os.chown(path, pwd.getpwnam(self.user.name).pw_uid, pwd.getpwnam(self.user.name).pw_uid)
+        return path
+
+    popen_kwargs = Dict(help="Extra keyword arguments to pass to Popen.")
+
+    @default('popen_kwargs')
+    def _default_popen_kwargs(self):
+        return {'cwd': self.nxf_launch}
+
     schema = Dict(config=True, help="The pipeline JSON schema.")
 
     @default('schema')
@@ -29,7 +50,13 @@ class NextflowSpawner(LocalProcessSpawner):
         path = f"{self.nxf_home}/assets/{urlparse(self.workflow_url).path[1:]}/nextflow_schema.json"
     
         try:
-            run(['nextflow', 'pull', self.workflow_url], check=True)
+            run(
+                args=['nextflow', 'pull', self.workflow_url],
+                check=True,
+                user=self.user.name,
+                cwd=self.home_dir,
+                env={**os.environ, 'NXF_HOME': self.nxf_home}
+            )
             with open(path) as nxf_schema:
                 return json.load(nxf_schema)
         except CalledProcessError:
@@ -37,13 +64,8 @@ class NextflowSpawner(LocalProcessSpawner):
         except FileNotFoundError:
             print(f"{self.workflow_url} does not seem to provide a nextflow_schema.json")
 
-#    def make_preexec_fn(self, name):
-#        if os.getuid():
-#            # if we are already running as non-root user, do nothing
-#            pass
-#        else:
-#            # otherwise drop privileges
-#            return super().set_user_setuid(name, chdir=True)
+    def make_preexec_fn(self, name):
+        return set_user_setuid(name, chdir=False)
 
     def _get_params_from_schema(self, schema, key=None):
         params = {}
@@ -93,10 +115,10 @@ class NextflowSpawner(LocalProcessSpawner):
         # generate sha-1 hash from json payload for use as unique filename
         json_sha = hashlib.sha1(json_string.encode()).hexdigest()
 
-        with open(f'{json_sha}.json', 'w', encoding='utf-8') as fout:
+        with open(f'{self.nxf_home}/nextflowspawner_{json_sha}.json', 'w', encoding='utf-8') as fout:
             fout.write(json_string)
 
-        return f'{json_sha}.json'
+        return f'{self.nxf_home}/nextflowspawner_{json_sha}.json'
 
     def _options_form_default(self):
         params = self._get_params_from_schema(self.schema)
