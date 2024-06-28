@@ -12,8 +12,10 @@ from urllib.parse import urlparse
 
 class NextflowSpawner(LocalProcessSpawner):
 
-    default_url = Unicode('/nextflow', help="entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
+    default_url = Unicode('/nextflow', help="The entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
+
     workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
+    workflow_revison = Unicode('main', config=True, help="The revision of the pipeline repository.")
 
     home_dir = Unicode(help="The user home directory")
 
@@ -160,5 +162,6 @@ class NextflowSpawner(LocalProcessSpawner):
         env = super().get_env()
         env['NXF_HOME'] = self.nxf_home
         env['NXF_USER_WORKFLOW'] = self.workflow_url
+        env['NXF_USER_REVISION'] = self.workflow_revision
         env['NXF_USER_PARAMS'] = self._write_params_file(self.user_options)
         return env
