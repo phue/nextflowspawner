@@ -53,7 +53,7 @@ class NextflowSpawner(LocalProcessSpawner):
     
         try:
             run(
-                args=['nextflow', 'pull', self.workflow_url],
+                args=['nextflow', 'pull', self.workflow_url, '-r', self.workflow_revision],
                 check=True,
                 user=self.user.name,
                 cwd=self.home_dir,
@@ -162,6 +162,6 @@ class NextflowSpawner(LocalProcessSpawner):
         env = super().get_env()
         env['NXF_HOME'] = self.nxf_home
         env['NXF_USER_WORKFLOW'] = self.workflow_url
-        env['NXF_USER_revision'] = self.workflow_revision
+        env['NXF_USER_REVISION'] = self.workflow_revision
         env['NXF_USER_PARAMS'] = self._write_params_file(self.user_options)
         return env
