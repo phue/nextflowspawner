@@ -17,11 +17,13 @@ class NextflowSpawner(LocalProcessSpawner):
     workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
     workflow_revision = Unicode('main', config=True, help="The revision of the pipeline repository.")
 
+    home_dir_template = Unicode('/home/{username}', config=True, help="Template to expand to set the user home. {username} is expanded to the jupyterhub username.")
+
     home_dir = Unicode(help="The user home directory")
 
     @default('home_dir')
     def _default_home_dir(self):
-        return pwd.getpwnam(self.user.name).pw_dir
+        return self.home_dir_template.format(username=self.user.name)
 
     nxf_home = Unicode(help="The directory where nextflow assets are stored.")
 
