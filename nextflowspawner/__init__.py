@@ -10,9 +10,16 @@ from subprocess import run, CalledProcessError
 from traitlets import default, Dict, Unicode
 from urllib.parse import urlparse
 
+def ignite():
+    return {
+        'command': ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '-r', os.environ['NXF_USER_REVISION'], '--PORT={port}', '-resume', '-params-file', os.environ['NXF_USER_PARAMS']],
+        'timeout': 120,
+        'launcher_entry': {'title': 'Nextflow'}
+    }
+
 class NextflowSpawner(LocalProcessSpawner):
 
-    default_url = Unicode('/nextflow', help="The entrypoint for https://github.com/phue/jupyter-nextflow-proxy")
+    default_url = Unicode('/nextflow', help="The entrypoint for the server proxy")
 
     workflow_url = Unicode(config=True, help="The url of the pipeline repository.")
     workflow_revision = Unicode('main', config=True, help="The revision of the pipeline repository.")
