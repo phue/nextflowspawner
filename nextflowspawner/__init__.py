@@ -169,6 +169,7 @@ class NextflowSpawner(LocalProcessSpawner):
 
     def get_env(self):
         env = super().get_env()
+        env['HOME'] = self.home_dir
         env['NXF_HOME'] = self.nxf_home
         env['NXF_USER_WORKFLOW'] = self.workflow_url
         env['NXF_USER_REVISION'] = self.workflow_revision
