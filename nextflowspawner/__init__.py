@@ -145,15 +145,15 @@ class NextflowSpawner(LocalProcessSpawner):
         # get user-defined parameters from form and cast types
         params = { k: self._convert_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
 
-        # check if provided paths actually exist
-        for k, v in self._get_params_from_schema(self.schema, 'format').items():
-            if k in params.keys() and v == 'path':
-                if not (g := glob.glob(params.get(k))):
-                    raise FileNotFoundError(f"{params.get(k)} does not exist.")
-                else:
-                    for p in g:
-                        if not os.access(p, os.R_OK):
-                            raise PermissionError(f"{p} is not readable.")
+        # check if provided paths exist and permissions suffice
+        for param, format in self._get_params_from_schema(self.schema, 'format').items():
+            if (pattern := params.get(param)) and format == 'path':
+                if not (paths := glob.glob(pattern)):
+                    raise FileNotFoundError(f"{pattern} does not exist.")
+                if not os.access(os.path.dirname(pattern), os.R_OK):
+                    raise PermissionError(f"Parent directory is not readable.")
+                if (not_readable := [path for path in paths if not os.access(path, os.R_OK)]):
+                    raise PermissionError(f"{not_readable} are not readable.")
 
         # update defaults with user-defined parameters from form
         options = defaults | params
