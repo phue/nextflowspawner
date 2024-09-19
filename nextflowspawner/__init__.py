@@ -80,12 +80,13 @@ class NextflowSpawner(LocalProcessSpawner):
 
     def _get_params_from_schema(self, schema, key=None):
         params = {}
-        for group in schema['defs'].values():
+        groups = schema['$defs'] if '$defs' in schema else schema['defs']
+        for group in groups.values():
             if (param := group.get('properties')).get('type') != 'object':
                 for k, v in param.items():
                     params[k] = v if key is None else v.get(key)
             else: # recurse nested parameters
-                params[param.get('title')] = self._get_params_from_schema({'defs': {param.get('title'): param}}, key)
+                params[param.get('title')] = self._get_params_from_schema({'$defs': {param.get('title'): param}}, key)
         return params
 
     def _convert_schema_type(self, type, param=None):
