@@ -11,8 +11,17 @@ from traitlets import default, Dict, Unicode
 from urllib.parse import urlparse
 
 def ignite():
+    cmd = ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '--PORT={port}', '-resume']
+
+    if 'NXF_USER_REVISION' in os.environ:
+        cmd.extend(['-r', os.environ['NXF_USER_REVISION']])
+    if 'NXF_USER_PARAMS' in os.environ:
+        cmd.extend(['-params-file', os.environ['NXF_USER_PARAMS']])
+    if 'NXF_USER_ENDPOINT' in os.environ:
+        cmd.extend(['-with-weblog', os.environ['NXF_USER_ENDPOINT']])
+
     return {
-        'command': ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '-r', os.environ['NXF_USER_REVISION'], '--PORT={port}', '-resume', '-params-file', os.environ['NXF_USER_PARAMS']],
+        'command': cmd,
         'timeout': 120,
         'launcher_entry': {'title': 'Nextflow'}
     }
@@ -25,8 +34,9 @@ class NextflowSpawner(LocalProcessSpawner):
     workflow_revision = Unicode('main', config=True, help="The revision of the pipeline repository.")
 
     home_dir_template = Unicode('/home/{username}', config=True, help="Template to expand to set the user home. {username} is expanded to the jupyterhub username.")
-
     home_dir = Unicode(help="The user home directory")
+
+    log_endpoint = Unicode(None, config=True, allow_none=True, help="The http endpoint for nf-weblog.")
 
     @default('home_dir')
     def _default_home_dir(self):
@@ -175,4 +185,6 @@ class NextflowSpawner(LocalProcessSpawner):
         env['NXF_USER_WORKFLOW'] = self.workflow_url
         env['NXF_USER_REVISION'] = self.workflow_revision
         env['NXF_USER_PARAMS'] = self._write_params_file(self.user_options)
+        if self.log_endpoint:
+            env['NXF_USER_ENDPOINT'] = self.log_endpoint
         return env
