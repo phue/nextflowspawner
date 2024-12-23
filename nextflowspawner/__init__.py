@@ -68,8 +68,7 @@ class NextflowSpawner(LocalProcessSpawner):
 
     @default('schema')
     def _default_schema(self):
-        path = f"{self.nxf_home}/assets/{urlparse(self.workflow_url).path[1:]}/nextflow_schema.json"
-    
+        schema_path = os.path.join(self.nxf_home, 'assets', urlparse(self.workflow_url).path[1:], 'nextflow_schema.json')
         try:
             run(
                 args=['nextflow', 'pull', self.workflow_url, '-r', self.workflow_revision],
@@ -78,7 +77,7 @@ class NextflowSpawner(LocalProcessSpawner):
                 cwd=self.home_dir,
                 env={**os.environ, 'NXF_HOME': self.nxf_home}
             )
-            with open(path) as nxf_schema:
+            with open(schema_path) as nxf_schema:
                 return json.load(nxf_schema)
         except CalledProcessError:
             print(f"{self.workflow_url} does not seem to exist")
@@ -92,43 +91,44 @@ class NextflowSpawner(LocalProcessSpawner):
         params = {}
         groups = schema['$defs'] if '$defs' in schema else schema['defs']
         for group in groups.values():
-            if (param := group.get('properties')).get('type') != 'object':
-                for k, v in param.items():
-                    params[k] = v if key is None else v.get(key)
-            else: # recurse nested parameters
-                params[param.get('title')] = self._get_params_from_schema({'$defs': {param.get('title'): param}}, key)
+            for param, value in group.get('properties').items():
+                if value.get('type') != 'object':
+                    params[param] = value if key is None else value.get(key)
+                else: # recurse nested parameters
+                    nested = { k: v for k, v in value.get('properties').items() }
+                    params[param] = self._get_params_from_schema({'$defs': {param: {'properties': nested}}}, key)
         return params
 
     def _convert_schema_type(self, type, param=None):
         match type:
             case 'boolean':
-                return bool(param) if param is not None else 'checkbox'
+                return bool(param) if param else 'checkbox'
             case 'integer':
-                return int(param) if param is not None else 'number'
+                return int(param) if param else 'number'
             case 'number':
-                return float(param) if param is not None else 'number'
+                return float(param) if param else 'number'
             case _:
-                return str(param) if param is not None else 'text'
+                return str(param) if param else 'text'
 
-    def _construct_form_field(self, id, param):
+    def _construct_form_field(self, name, param):
         html = []
-        html += "<div class='form-group'>"
-        html += "<label for='{id}'>{desc}</label>".format(id=id, desc=param.get('description')) if param.get('description') else []
         match param:
             case {'hidden': _}:  # don't render parameters marked as hidden
-                return ""
+                pass
             case {'enum': enum}: # render enum-style parameters as select list
-                html += "<select name='{id}' class='form-control'>".format(id=id)
+                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=param.get('description'))
+                html += "<select name='{name}' class='form-control'>".format(name=name)
                 for opt in enum:
-                    html += "<option value='{opt}'>{opt}</option>".format(id=id, opt=opt)
+                    html += "<option value='{opt}'>{opt}</option>".format(name=name, opt=opt)
                 html += "</select>"
             case {'type': type, 'default': default}: # render others as input fields
-                html += "<input name='{id}' class='form-control' value='{default}' type='{type}'></input>".format(id=id, default=default, type=self._convert_schema_type(type))
+                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=param.get('description'))
+                html += "<input name='{name}' class='form-control' value='{default}' type='{type}'></input>".format(name=name, default=default, type=self._convert_schema_type(type))
             case _: # recurse nested parameters
-                html += [ self._construct_form_field(p, v) for p, v in param.items() ]
-        html += "</div>"
-
-        return "".join(html)
+                for p, v in param.items():
+                    if (nested := self._construct_form_field(p, v)):
+                        html += nested
+        return html
 
     def _write_params_file(self, config):
         # dump parameters to json
@@ -144,10 +144,10 @@ class NextflowSpawner(LocalProcessSpawner):
 
     def _options_form_default(self):
         params = self._get_params_from_schema(self.schema)
-        html = ""
+        form = []
         for k, v in params.items():
-            html += self._construct_form_field(k, v)
-        return html
+            form += (self._construct_form_field(k, v))
+        return "".join(form)
 
     def options_from_form(self, formdata):
         # get types and defaults from schema
