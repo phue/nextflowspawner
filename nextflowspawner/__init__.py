@@ -94,40 +94,47 @@ class NextflowSpawner(LocalProcessSpawner):
             for param, value in group.get('properties').items():
                 if value.get('type') != 'object':
                     params[param] = value if key is None else value.get(key)
-                else: # recurse nested parameters
-                    nested = { k: v for k, v in value.get('properties').items() }
-                    params[param] = self._get_params_from_schema({'$defs': {param: {'properties': nested}}}, key)
+                else:
+                    # recurse nested parameters
+                    params[param] = self._get_params_from_schema({'$defs': {param: {**value}}}, key)
         return params
-
-    def _convert_schema_type(self, type, param=None):
-        match type:
-            case 'boolean':
-                return bool(param) if param else 'checkbox'
-            case 'integer':
-                return int(param) if param else 'number'
-            case 'number':
-                return float(param) if param else 'number'
-            case _:
-                return str(param) if param else 'text'
 
     def _construct_form_field(self, name, param):
         html = []
         match param:
-            case {'hidden': _}:  # don't render parameters marked as hidden
+            case {'hidden': _}:
                 pass
-            case {'enum': enum}: # render enum-style parameters as select list
-                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=param.get('description'))
-                html += "<select name='{name}' class='form-control'>".format(name=name)
-                for opt in enum:
-                    html += "<option value='{opt}'>{opt}</option>".format(name=name, opt=opt)
-                html += "</select>"
-            case {'type': type, 'default': default}: # render others as input fields
-                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=param.get('description'))
-                html += "<input name='{name}' class='form-control' value='{default}' type='{type}'></input>".format(name=name, default=default, type=self._convert_schema_type(type))
-            case _: # recurse nested parameters
+            case {'type': ptype, 'description': description, 'default': default}:
+                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=description)
+                if choices := param.get('enum'):
+                    # render enums as select list
+                    html += "<select name='{name}' class='form-control'>".format(name=name)
+                    for opt in choices:
+                        html += "<option value='{opt}'>{opt}</option>".format(name=name, opt=opt)
+                    html += "</select>"
+                else:
+                    # render input fields dependent on parameter type
+                    match ptype:
+                        case 'integer' | 'number':
+                            html += "<input name='{name}' class='form-control' value='{default}' type='number'></input>".format(name=name, default=default)
+                        case 'string':
+                            html += "<input name='{name}' class='form-control' value='{default}' type='text'></input>".format(name=name, default=default)
+                        case 'boolean':
+                            html += "<input name='{name}' class='form-control' value='{default}' type='checkbox'></input>".format(name=name, default=default)
+                # add help text if available
+                if help_text := param.get('help_text'):
+                    html += "<small class='form-text text-muted'>{help_text}</small>".format(help_text=help_text)
+            case _:
+                # recurse nested parameters
+                nested = []
                 for p, v in param.items():
-                    if (nested := self._construct_form_field(p, v)):
-                        html += nested
+                    nested += self._construct_form_field(p, v)
+                if nested:
+                    html += "<div class='card'>"
+                    html += "<div class='card-header'>{name} options</div>".format(name=name)
+                    html += "<div class='card-body'>"
+                    html += nested
+                    html += "</div></div>"
         return html
 
     def _write_params_file(self, config):
@@ -150,11 +157,22 @@ class NextflowSpawner(LocalProcessSpawner):
         return "".join(form)
 
     def options_from_form(self, formdata):
+        def _cast_schema_type(type, param):
+            match type:
+                case 'boolean':
+                    return bool(param)
+                case 'integer':
+                    return int(param)
+                case 'number':
+                    return float(param)
+                case _:
+                    return str(param)
+
         # get types and defaults from schema
         types, defaults = self._get_params_from_schema(self.schema, 'type'), self._get_params_from_schema(self.schema, 'default')
 
         # get user-defined parameters from form and cast types
-        params = { k: self._convert_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
+        params = { k: _cast_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
 
         # check if provided paths exist and permissions suffice
         for param, format in self._get_params_from_schema(self.schema, 'format').items():
