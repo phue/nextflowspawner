@@ -1,14 +1,15 @@
 import glob
 import hashlib
 import json
-import jsonschema
 import os
 import pwd
-
-from jupyterhub.spawner import LocalProcessSpawner, set_user_setuid
-from subprocess import run, CalledProcessError
-from traitlets import default, Dict, Unicode
+from subprocess import CalledProcessError, run
 from urllib.parse import urlparse
+
+import jsonschema
+from jupyterhub.spawner import LocalProcessSpawner, set_user_setuid
+from traitlets import Dict, Unicode, default
+
 
 def ignite():
     cmd = ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '--PORT={port}', '-resume']
@@ -80,9 +81,11 @@ class NextflowSpawner(LocalProcessSpawner):
             with open(schema_path) as nxf_schema:
                 return json.load(nxf_schema)
         except CalledProcessError:
-            print(f"{self.workflow_url} does not seem to exist")
+            msg = f"{self.workflow_url} does not seem to exist"
+            self.log.exception(msg)
         except FileNotFoundError:
-            print(f"{self.workflow_url} does not seem to provide a nextflow_schema.json")
+            msg = f"{self.workflow_url} does not seem to provide a nextflow_schema.json"
+            self.log.exception(msg)
 
     def make_preexec_fn(self, name):
         return set_user_setuid(name, chdir=False)
@@ -105,25 +108,25 @@ class NextflowSpawner(LocalProcessSpawner):
             case {'hidden': _}:
                 pass
             case {'type': ptype, 'description': description, 'default': default}:
-                html += "<label for='{name}'>{desc}</label>".format(name=name, desc=description)
+                html += f"<label for='{name}'>{description}</label>"
                 if choices := param.get('enum'):
                     # render enums as select list
-                    html += "<select name='{name}' class='form-control'>".format(name=name)
+                    html += f"<select name='{name}' class='form-control'>"
                     for opt in choices:
-                        html += "<option value='{opt}'>{opt}</option>".format(name=name, opt=opt)
+                        html += f"<option value='{opt}'>{opt}</option>"
                     html += "</select>"
                 else:
                     # render input fields dependent on parameter type
                     match ptype:
                         case 'integer' | 'number':
-                            html += "<input name='{name}' class='form-control' value='{default}' type='number'></input>".format(name=name, default=default)
+                            html += f"<input name='{name}' class='form-control' value='{default}' type='number'></input>"
                         case 'string':
-                            html += "<input name='{name}' class='form-control' value='{default}' type='text'></input>".format(name=name, default=default)
+                            html += f"<input name='{name}' class='form-control' value='{default}' type='text'></input>"
                         case 'boolean':
-                            html += "<input name='{name}' class='form-control' value='{default}' type='checkbox'></input>".format(name=name, default=default)
+                            html += f"<input name='{name}' class='form-control' value='{default}' type='checkbox'></input>"
                 # add help text if available
                 if help_text := param.get('help_text'):
-                    html += "<small class='form-text text-muted'>{help_text}</small>".format(help_text=help_text)
+                    html += f"<small class='form-text text-muted'>{help_text}</small>"
             case _:
                 # recurse nested parameters
                 nested = []
@@ -131,7 +134,7 @@ class NextflowSpawner(LocalProcessSpawner):
                     nested += self._construct_form_field(p, v)
                 if nested:
                     html += "<div class='card'>"
-                    html += "<div class='card-header'>{name} options</div>".format(name=name)
+                    html += f"<div class='card-header'>{name} options</div>"
                     html += "<div class='card-body'>"
                     html += nested
                     html += "</div></div>"
@@ -157,8 +160,8 @@ class NextflowSpawner(LocalProcessSpawner):
         return "".join(form)
 
     def options_from_form(self, formdata):
-        def _cast_schema_type(type, param):
-            match type:
+        def _cast_schema_type(ptype, param):
+            match ptype:
                 case 'boolean':
                     return bool(param)
                 case 'integer':
@@ -175,14 +178,17 @@ class NextflowSpawner(LocalProcessSpawner):
         params = { k: _cast_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
 
         # check if provided paths exist and permissions suffice
-        for param, format in self._get_params_from_schema(self.schema, 'format').items():
-            if (pattern := params.get(param)) and format == 'path':
+        for param, fmt in self._get_params_from_schema(self.schema, 'format').items():
+            if (pattern := params.get(param)) and fmt == 'path':
                 if not (paths := glob.glob(pattern)):
-                    raise FileNotFoundError(f"{pattern} does not exist.")
+                    msg = f"{pattern} does not exist."
+                    raise FileNotFoundError(msg)
                 if not os.access(os.path.dirname(pattern), os.R_OK):
-                    raise PermissionError(f"Parent directory is not readable.")
+                    msg = "Parent directory is not readable."
+                    raise PermissionError(msg)
                 if (not_readable := [path for path in paths if not os.access(path, os.R_OK)]):
-                    raise PermissionError(f"{not_readable} are not readable.")
+                    msg = f"{not_readable} are not readable."
+                    raise PermissionError(msg)
 
         # update defaults with user-defined parameters from form
         options = defaults | params
