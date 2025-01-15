@@ -12,6 +12,10 @@ from traitlets import Dict, Unicode, default
 
 
 def ignite():
+    """
+    Launch a Nextflow pipeline instance via jupyter-server-proxy.
+    """
+
     cmd = ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '--PORT={port}', '-resume']
 
     if 'NXF_USER_REVISION' in os.environ:
@@ -28,6 +32,9 @@ def ignite():
     }
 
 class NextflowSpawner(LocalProcessSpawner):
+    """
+    A Spawner for Nextflow pipelines.
+    """
 
     default_url = Unicode('/nextflow', help="The entrypoint for the server proxy")
 
@@ -91,16 +98,17 @@ class NextflowSpawner(LocalProcessSpawner):
         return set_user_setuid(name, chdir=False)
 
     def _get_params_from_schema(self, schema, key=None):
-        params = {}
+        params_dict = {}
         groups = schema['$defs'] if '$defs' in schema else schema['defs']
-        for group in groups.values():
-            for param, value in group.get('properties').items():
-                if value.get('type') != 'object':
-                    params[param] = value if key is None else value.get(key)
+        for group, defs in groups.items():
+            params_dict[group] = {}
+            for param, properties in defs.get('properties').items():
+                if properties.get('type') != 'object':
+                    params_dict[group][param] = properties if key is None else properties.get(key)
                 else:
                     # recurse nested parameters
-                    params[param] = self._get_params_from_schema({'$defs': {param: {**value}}}, key)
-        return params
+                    params_dict[group] |= self._get_params_from_schema({'$defs': {param: {**properties}}}, key)
+        return params_dict
 
     def _construct_form_field(self, name, param):
         html = []
@@ -133,11 +141,7 @@ class NextflowSpawner(LocalProcessSpawner):
                 for p, v in param.items():
                     nested += self._construct_form_field(p, v)
                 if nested:
-                    html += "<div class='card'>"
-                    html += f"<div class='card-header'>{name} options</div>"
-                    html += "<div class='card-body'>"
                     html += nested
-                    html += "</div></div>"
         return html
 
     def _write_params_file(self, config):
@@ -153,10 +157,15 @@ class NextflowSpawner(LocalProcessSpawner):
         return f'{self.nxf_home}/nextflowspawner_{json_sha}.json'
 
     def _options_form_default(self):
-        params = self._get_params_from_schema(self.schema)
         form = []
-        for k, v in params.items():
-            form += (self._construct_form_field(k, v))
+        for group, params in self._get_params_from_schema(self.schema).items():
+            if category := self._construct_form_field(group, params):
+                # this only renders card if category contains atleast one non-hidden parameter
+                form += "<div class='card'>"
+                form += f"<div class='card-header'>{group} options</div>"
+                form += "<div class='card-body'>"
+                form += category
+                form += "</div></div>"
         return "".join(form)
 
     def options_from_form(self, formdata):
@@ -171,27 +180,33 @@ class NextflowSpawner(LocalProcessSpawner):
                 case _:
                     return str(param)
 
-        # get types and defaults from schema
-        types, defaults = self._get_params_from_schema(self.schema, 'type'), self._get_params_from_schema(self.schema, 'default')
+        def _apply_form_params(params, formdata):
+            params_dict = {}
+            for param, properties in params.items():
+                if not 'type' in properties:
+                    # recurse nested parameters
+                    return {param: _apply_form_params(properties, formdata)}
 
-        # get user-defined parameters from form and cast types
-        params = { k: _cast_schema_type(types.get(k), v.pop()) for k, v in formdata.items() }
+                value = _cast_schema_type(properties.get('type'), formdata.get(param, [properties.get('default')]).pop(0))
 
-        # check if provided paths exist and permissions suffice
-        for param, fmt in self._get_params_from_schema(self.schema, 'format').items():
-            if (pattern := params.get(param)) and fmt == 'path':
-                if not (paths := glob.glob(pattern)):
-                    msg = f"{pattern} does not exist."
-                    raise FileNotFoundError(msg)
-                if not os.access(os.path.dirname(pattern), os.R_OK):
-                    msg = "Parent directory is not readable."
-                    raise PermissionError(msg)
-                if (not_readable := [path for path in paths if not os.access(path, os.R_OK)]):
-                    msg = f"{not_readable} are not readable."
-                    raise PermissionError(msg)
+                # check if file(s) exists and permissions suffice
+                if 'exists' in properties:
+                    if not glob.glob(value):
+                        msg = f"{value} does not exist."
+                        raise FileNotFoundError(msg)
+                    if not os.access(os.path.dirname(value), os.R_OK):
+                        msg = "{value} is not readable."
+                        raise PermissionError(msg)
 
-        # update defaults with user-defined parameters from form
-        options = defaults | params
+                params_dict[param] = value
+
+            return params_dict
+
+        options = {}
+
+        # apply user-defined parameters from form, use defaults if not provided
+        for _, param in self._get_params_from_schema(self.schema).items():
+            options |= _apply_form_params(param, formdata)
 
         # add email address for notifications (if provided via config)
         if 'NXF_USER_EMAIL' in self.environment:
