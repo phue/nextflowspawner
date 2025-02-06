@@ -24,6 +24,8 @@ def ignite():
         cmd.extend(['-params-file', os.environ['NXF_USER_PARAMS']])
     if 'NXF_USER_ENDPOINT' in os.environ:
         cmd.extend(['-with-weblog', os.environ['NXF_USER_ENDPOINT']])
+    if 'NXF_USER_PROFILE' in os.environ:
+        cmd.extend(['-profile', os.environ['NXF_USER_PROFILE']])
 
     return {
         'command': cmd,
@@ -45,6 +47,7 @@ class NextflowSpawner(LocalProcessSpawner):
     home_dir = Unicode(help="The user home directory")
 
     log_endpoint = Unicode(None, config=True, allow_none=True, help="The http endpoint for nf-weblog.")
+    nxf_profile = Unicode(None, config=True, allow_none=True, help="Nextflow profile(s) to use for pipeline execution.")
 
     @default('home_dir')
     def _default_home_dir(self):
@@ -183,7 +186,7 @@ class NextflowSpawner(LocalProcessSpawner):
         def _apply_form_params(params, formdata):
             params_dict = {}
             for param, properties in params.items():
-                if not 'type' in properties:
+                if 'type' not in properties:
                     # recurse nested parameters
                     return {param: _apply_form_params(properties, formdata)}
 
@@ -205,7 +208,7 @@ class NextflowSpawner(LocalProcessSpawner):
         options = {}
 
         # apply user-defined parameters from form, use defaults if not provided
-        for _, param in self._get_params_from_schema(self.schema).items():
+        for param in self._get_params_from_schema(self.schema).values():
             options |= _apply_form_params(param, formdata)
 
         # add email address for notifications (if provided via config)
@@ -226,4 +229,6 @@ class NextflowSpawner(LocalProcessSpawner):
         env['NXF_USER_PARAMS'] = self._write_params_file(self.user_options)
         if self.log_endpoint:
             env['NXF_USER_ENDPOINT'] = self.log_endpoint
+        if self.nxf_profile:
+            env['NXF_USER_PROFILE'] = self.nxf_profile
         return env
