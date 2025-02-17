@@ -31,8 +31,7 @@ def ignite():
         'command': cmd,
         'timeout': 120,
         'launcher_entry': {'title': 'Nextflow'},
-        'unix_socket': True,
-        'raw_socket_proxy': True
+        'unix_socket': True
     }
 
 class NextflowSpawner(LocalProcessSpawner):
