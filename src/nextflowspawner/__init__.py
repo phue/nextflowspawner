@@ -16,7 +16,7 @@ def ignite():
     Launch a Nextflow pipeline instance via jupyter-server-proxy.
     """
 
-    cmd = ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '--PORT={port}', '-resume']
+    cmd = ['nextflow', 'run', os.environ['NXF_USER_WORKFLOW'], '--SOCKET={unix_socket}', '-resume']
 
     if 'NXF_USER_REVISION' in os.environ:
         cmd.extend(['-r', os.environ['NXF_USER_REVISION']])
@@ -31,6 +31,7 @@ def ignite():
         'command': cmd,
         'timeout': 120,
         'launcher_entry': {'title': 'Nextflow'},
+        'unix_socket': True,
         'raw_socket_proxy': True
     }
 
