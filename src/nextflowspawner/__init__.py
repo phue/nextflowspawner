@@ -26,7 +26,9 @@ def ignite():
         cmd.extend(['-with-weblog', os.environ['NXF_USER_ENDPOINT']])
     if 'NXF_USER_PROFILE' in os.environ:
         cmd.extend(['-profile', os.environ['NXF_USER_PROFILE']])
-
+    if 'NXF_USER_OUTPUT' in os.environ:
+        cmd.extend(['-output-dir', os.environ['NXF_USER_OUTPUT']])
+ 
     return {
         'command': cmd,
         'timeout': 120,
@@ -49,6 +51,7 @@ class NextflowSpawner(LocalProcessSpawner):
 
     log_endpoint = Unicode(None, config=True, allow_none=True, help="The http endpoint for nf-weblog.")
     nxf_profile = Unicode(None, config=True, allow_none=True, help="Nextflow profile(s) to use for pipeline execution.")
+    nxf_output = Unicode(None, config=True, allow_none=True, help="Nextflow outputDir to use for storing for pipeline outputs.")
 
     @default('home_dir')
     def _default_home_dir(self):
@@ -232,4 +235,6 @@ class NextflowSpawner(LocalProcessSpawner):
             env['NXF_USER_ENDPOINT'] = self.log_endpoint
         if self.nxf_profile:
             env['NXF_USER_PROFILE'] = self.nxf_profile
+        if self.nxf_output:
+            env['NXF_USER_OUTPUT'] = self.nxf_output
         return env
